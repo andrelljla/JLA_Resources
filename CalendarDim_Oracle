@@ -1,0 +1,118 @@
+drop table calendar_dim;
+
+CREATE TABLE Calendar_Dim
+(
+  DateKey Integer NOT NULL,
+  DateComment varchar2(255),
+  DateValue Date NOT NULL,
+  Day VARCHAR2(10 ),
+  DayOfWeek Integer,
+  DayOfMonth Integer,
+  DayOfYear Integer,
+  PreviousDay date,
+  NextDay date,
+  WeekOfYear Integer,
+  Month VARCHAR2(10 ),
+  ShortMonth VARCHAR2(5),
+  MonthOfYear Integer,
+  QuarterOfYear Integer,
+  Year Integer,
+  YearMonth_NUM Integer,
+  YearMonth_CHAR varchar2(6),
+  MonthYear_CHAR varchar2(6),
+  MM_Year varchar2(7),
+  Month_Ago_DateKey integer,
+  Year_Ago_DateKey integer,
+  Days_Since_19000101 integer,
+CONSTRAINT CALENDAR_PK PRIMARY KEY (DATEKEY)
+);
+
+CREATE INDEX CALENDAR_DOMMOY_IX3 ON CALENDAR_DIM (DAYOFMONTH, MONTHOFYEAR);
+CREATE INDEX CALENDAR_DOM_IX2 ON CALENDAR_DIM (DAYOFMONTH);
+CREATE INDEX CALENDAR_DOY_IX1 ON CALENDAR_DIM (DAYOFYEAR);
+
+-- Declare 12/31/1899 as the "Error" date
+INSERT INTO CALENDAR_DIM (dateKey, DateComment, DateValue) select 18991231, 'Error Date',  (to_date('12/31/1899','MM/DD/YYYY')) from dual;
+
+-- Declare 12/31/3999 as the "End" Date
+INSERT INTO CALENDAR_DIM (dateKey, DateComment, DateValue) select 39991231, 'End Date',  (to_date('12/31/3999','MM/DD/YYYY')) from dual;
+
+INSERT INTO Calendar_Dim
+  SELECT
+    to_number(to_char(CurrDate, 'YYYYMMDD')) as DateKey,
+    Null as DateComment, 
+    CurrDate AS DateValue,
+    TO_CHAR(CurrDate,'Day') as Day,
+    to_number(TO_CHAR(CurrDate,'D')) AS DayOfWeek,
+    to_number(TO_CHAR(CurrDate,'DD')) AS DayOfMonth,
+    to_number(TO_CHAR(CurrDate,'DDD')) AS DayOfYear,
+    CurrDate - 1 as PreviousDay,
+    CurrDate + 1 as NextDay,
+    to_number(TO_CHAR(CurrDate+1,'IW')) AS WeekOfYear,
+    TO_CHAR(CurrDate,'Month') AS Month,
+    TO_CHAR (CurrDate,'MON') as ShortMonth,
+    to_number(TO_CHAR(CurrDate,'MM')) AS MonthofYear,
+    to_number((TO_CHAR(CurrDate,'Q'))) AS QuarterOfYear,
+    to_number((TO_CHAR(CurrDate,'YYYY'))) AS Year,
+    to_number((TO_CHAR(CurrDate,'YYYYMM'))) as YearMonth_Num,
+    TO_CHAR(CurrDate,'YYYYMM') as YearMonth_Char,
+    TO_CHAR(CurrDate,'MMYYYY') as MonthYear_Char,
+    to_char(CurrDate,'MM-YYYY') as MM_Year,
+    18991231 as Month_Ago_DateKey,
+    18991231 as Year_Ago_DateKey,
+    CurrDate - (to_date('01/01/1900','MM/DD/YYYY'))
+FROM 
+(
+  -- Starting with 1/1/1960, create 100 years of dimension data
+  select level n, TO_DATE('31/12/1959','DD/MM/YYYY') + NUMTODSINTERVAL(level,'day') CurrDate from dual connect by level <= 51135
+)
+order by 1;
+commit;
+
+--select max(datekey) From CALENDAR_DIM;
+
+-- Populate the "Year Ago" keys
+update calendar_dim c1 set
+  Year_Ago_Datekey = (select datekey from calendar_dim c2 where c1.DayOfYear = c2.DayOfYear and c2.Year = C1.year -1) 
+where DateKey>19610000  -- Keys don't exist prior to 1960
+;
+
+-- Populate the non-January "Month_Ago" keys
+update calendar_dim c1 set
+  Month_Ago_Datekey = (
+    select datekey from calendar_dim c2 where c2.year = c1.year and c2.dayofMonth = c1.dayofmonth and c2.monthofyear = c1.monthofyear-1 
+    )
+where DateKey>19600200  -- Keys don't exist prior to 1/1/1960
+and monthofyear > 1     -- Need different logic to handle January dates
+;
+
+-- Populate the January "Month-Ago" keys
+update calendar_dim c1 set
+  Month_Ago_Datekey = (
+    select datekey from calendar_dim c2 where c2.year = c1.year-1 and c2.dayofMonth = c1.dayofmonth and c2.monthofyear = 12 
+    )
+where DateKey>19610000  -- Keys don't exist prior to 1/1/1960
+and monthofyear = 1     -- Need different logic to handle January dates
+;
+
+commit;
+
+
+/*
+with foo as 
+(
+  select datekey, datevalue, shortmonth, monthofyear, year, month_ago_datekey, dayofmonth
+  from calendar_dim
+  where year
+  and monthofyear=1
+  and dayofmonth < 5
+)
+select datekey, datevalue, shortmonth, monthofyear, year, month_ago_datekey, dayofmonth, 
+  (select datekey from calendar_dim c2 where c2.year = foo.year and c2.dayofMonth = foo.dayofmonth and c2.monthofyear = foo.monthofyear-1) as MonthAgo
+from foo;
+
+select count(*) from calendar_dim where year_ago_datekey = 18991231;
+select count(*) from calendar_dim where month_ago_datekey = 18991231;
+
+
+*/
