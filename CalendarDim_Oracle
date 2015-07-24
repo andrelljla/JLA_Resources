@@ -63,7 +63,7 @@ INSERT INTO Calendar_Dim
     CurrDate - (to_date('01/01/1900','MM/DD/YYYY'))
 FROM 
 (
-  -- Starting with 1/1/1960, create 100 years of dimension data
+  -- Starting with 1/1/1960, create dimension data
   select level n, TO_DATE('31/12/1959','DD/MM/YYYY') + NUMTODSINTERVAL(level,'day') CurrDate from dual connect by level <= 51135
 )
 order by 1;
